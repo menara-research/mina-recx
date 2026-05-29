@@ -1,0 +1,66 @@
+# Dataset configuration for Minangkabau embedding project
+
+nusax_bitext:
+  # Parallel sentences: eng-min
+  eng_min:
+    repo: "mteb/NusaXBitextMining"
+    config: "eng-min"
+    columns: ["sentence1", "sentence2"]  # sentence1=eng, sentence2=min
+    size: 500
+  
+  # Parallel sentences: eng-ind (for building ind-min bridge)
+  eng_ind:
+    repo: "mteb/NusaXBitextMining"
+    config: "eng-ind"
+    columns: ["sentence1", "sentence2"]
+    size: 500
+
+nusax_senti:
+  min:
+    repo: "mteb/nusa_x_senti"
+    config: "min"
+    columns: ["id", "text", "lang", "label"]
+    splits:
+      train: 500
+      validation: 100
+      test: 400
+  
+  ind:
+    repo: "mteb/nusa_x_senti"
+    config: "ind"
+    columns: ["id", "text", "lang", "label"]
+    splits:
+      train: 500
+      validation: 100
+      test: 400
+  
+  eng:
+    repo: "mteb/nusa_x_senti"
+    config: "eng"
+    columns: ["id", "text", "lang", "label"]
+    splits:
+      train: 500
+      validation: 100
+      test: 400
+
+bitext_miners:
+  repo: "gentaiscool/bitext_nusax_miners"
+  lang_filter: "eng-min"
+  columns: ["sentence1", "sentence2", "lang"]
+  size: 500
+
+benchmark:
+  # Test set sizes for MinSTS-Retrieval
+  retrieval:
+    n_queries: 100
+    n_corpus: 500
+  
+  sts:
+    n_pairs: 200
+  
+  cross_lingual:
+    min_en_pairs: 100
+    min_id_pairs: 100
+  
+  codeswitch:
+    n_queries: 50
