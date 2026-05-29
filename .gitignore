@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local runtime / agent state
+.bg-shell/
+.gsd/
+
+# Dataset caches can be regenerated from configs and scripts
+data/cache/
+
+# Model files are kept locally and intentionally excluded from GitHub.
+models/
+
+# Training checkpoint state is too large/noisy for source artifact commits.
+checkpoints/
+*.pt
+*.pth
+
+# Experiment service output
+wandb/
