@@ -1,0 +1,31 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "anchor": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "positive": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "negatives": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "List"
+    },
+    "type": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "lang_pair": {
+      "dtype": "string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}
