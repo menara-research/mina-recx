@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""
-Data preparation for Minangkabau embedding training.
-Downloads NusaX bitext, sentiment, and builds training pairs.
-Uses parallel downloads and disk caching.
+"""Data preparation for Minangkabau embedding training.
+
+Loads NusaX bitext and sentiment, builds training pairs and the benchmark.
 """
 
 import json
@@ -37,7 +36,7 @@ def _cached_json(path: Path, compute_fn):
 
 
 def load_all_datasets(cache_dir: str = "data/cache") -> dict:
-    """Load all NusaX datasets with HF cache (parallel-friendly)."""
+    """Load all NusaX datasets with HF cache."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     
     logger.info("Loading NusaX bitext (eng-min, eng-ind)...")
@@ -52,21 +51,33 @@ def load_all_datasets(cache_dir: str = "data/cache") -> dict:
     return {"eng_min": eng_min, "eng_ind": eng_ind, "senti": senti}
 
 
-def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
+def _eng_min_split(eng_min, holdout: float = 0.2):
+    """Deterministically split eng_min train into (train, heldout) slices.
+
+    Holds out the last `holdout` fraction so benchmark STS parallel pairs
+    never overlap with training parallel pairs.
     """
-    Build training pairs from parallel and sentiment data.
+    rows = list(eng_min["train"])
+    cut = int(len(rows) * (1 - holdout))
+    return rows[:cut], rows[cut:]
+
+
+def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
+    """Build training pairs from parallel and sentiment data.
+
     Types: parallel_translation, same_sentiment, different_sentiment,
-           cross_lingual_sentiment, bridge_translation, code_switch
+    cross_lingual_sentiment, bridge_translation, code_switch.
     """
     random.seed(seed)
     pairs = []
-    
+
     eng_min = data["eng_min"]
     eng_ind = data["eng_ind"]
     senti = data["senti"]
-    
-    # 1. Parallel translation pairs (eng↔min) — strongest signal
-    for row in eng_min["train"]:
+    eng_min_train, _ = _eng_min_split(eng_min)
+
+    # Parallel translation pairs (eng-min) use the train slice only.
+    for row in eng_min_train:
         pairs.append({
             "type": "parallel_translation",
             "text_a": row["sentence2"],  # min
@@ -75,7 +86,7 @@ def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
             "score": 1.0,
         })
     
-    # 2. Same-sentiment pairs within minangkabau
+    # Same-sentiment pairs within minangkabau
     for split in ["train", "validation"]:
         by_label = {0: [], 1: [], 2: []}
         for row in senti["min"][split]:
@@ -102,7 +113,7 @@ def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
                         "score": 0.1,
                     })
     
-    # 3. Cross-lingual sentiment alignment (min↔eng, min↔id)
+    # Cross-lingual sentiment alignment (min-eng, min-id)
     for other_lang in ["eng", "ind"]:
         by_label_min = {0: [], 1: [], 2: []}
         by_label_other = {0: [], 1: [], 2: []}
@@ -122,7 +133,7 @@ def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
                     "score": 0.7 if label != 1 else 0.5,
                 })
     
-    # 4. eng↔id bridge translations
+    # eng-id bridge translations
     for row in eng_ind["train"]:
         pairs.append({
             "type": "bridge_translation",
@@ -132,8 +143,8 @@ def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
             "score": 1.0,
         })
     
-    # 5. Code-switching synthetic examples
-    pairs.extend(_generate_code_switch(senti, n=200, seed=seed))
+    # Code-switching synthetic examples (train split held separate from eval)
+    pairs.extend(_generate_code_switch(senti, n=200, seed=seed, split="train"))
     
     random.shuffle(pairs)
     
@@ -148,14 +159,18 @@ def build_training_pairs(data: dict, seed: int = 42) -> list[dict]:
     return pairs
 
 
-def _generate_code_switch(senti: dict, n: int = 200, seed: int = 42) -> list[dict]:
-    """Generate synthetic code-switching examples (min/id/en mix)."""
+def _generate_code_switch(senti: dict, n: int = 200, seed: int = 42, split: str = "train") -> list[dict]:
+    """Generate synthetic code-switching examples (min/id/en mix).
+
+    `split` selects the sentiment split so training and eval draw from
+    disjoint sentences.
+    """
     random.seed(seed)
     pairs = []
-    
-    min_by_id = {r["id"]: r for r in senti["min"]["train"]}
-    ind_by_id = {r["id"]: r for r in senti["ind"]["train"]}
-    eng_by_id = {r["id"]: r for r in senti["eng"]["train"]}
+
+    min_by_id = {r["id"]: r for r in senti["min"][split]}
+    ind_by_id = {r["id"]: r for r in senti["ind"][split]}
+    eng_by_id = {r["id"]: r for r in senti["eng"][split]}
     common = sorted(set(min_by_id) & set(ind_by_id) & set(eng_by_id))
     
     for sid in random.sample(common, min(n, len(common))):
@@ -204,9 +219,10 @@ def build_benchmark(data: dict, seed: int = 42) -> dict:
     
     senti = data["senti"]
     eng_min = data["eng_min"]
-    
+    _, eng_min_heldout = _eng_min_split(eng_min)
+
     benchmark = {}
-    
+
     # --- 1. RETRIEVAL ---
     min_test = list(senti["min"]["test"])
     min_corpus = [r["text"] for r in min_test]
@@ -248,8 +264,8 @@ def build_benchmark(data: dict, seed: int = 42) -> dict:
     # --- 2. STS ---
     sts_pairs = []
     
-    # Parallel = high similarity
-    for row in eng_min["train"]:
+    # Parallel = high similarity; held-out slice, disjoint from training pairs
+    for row in eng_min_heldout:
         sts_pairs.append({
             "sentence1": row["sentence2"], "sentence2": row["sentence1"],
             "score": 5.0, "type": "parallel_translation", "lang_pair": "min-en",
@@ -301,7 +317,7 @@ def build_benchmark(data: dict, seed: int = 42) -> dict:
     benchmark["cross_lingual"] = cross_lingual
     
     # --- 4. CODE-SWITCHING ---
-    benchmark["codeswitch"] = _generate_code_switch(senti, n=50, seed=seed)
+    benchmark["codeswitch"] = _generate_code_switch(senti, n=50, seed=seed, split="test")
     
     logger.info("=== MinSTS-Retrieval Benchmark Stats ===")
     logger.info(f"  Retrieval: {len(min_queries)} mono, {len(cross_queries_en)} cross-en, {len(min_corpus)} corpus")
@@ -360,28 +376,23 @@ def main():
     logger.info("=== Minangkabau Embedding: Data Preparation ===")
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Load with HF cache
     data = load_all_datasets()
-    
-    # Build training pairs (cached)
+
     pairs = _cached_json(
         PROCESSED_DIR / "training_pairs.json",
         lambda: build_training_pairs(data),
     )
-    
-    # Build benchmark (cached)
+
     benchmark = _cached_json(
         PROCESSED_DIR / "benchmark.json",
         lambda: build_benchmark(data),
     )
-    
-    # Build training with hard negatives (cached)
+
     training_examples = _cached_json(
         PROCESSED_DIR / "training_with_negatives.json",
         lambda: prepare_training_with_negatives(pairs),
     )
     
-    # Also save as HF Dataset for easy loading
     flat = {
         "anchor": [e["anchor"] for e in training_examples],
         "positive": [e["positive"] for e in training_examples],
