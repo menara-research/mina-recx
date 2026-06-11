@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,7 @@ def step_evaluate_baselines(benchmark_path: str = "data/processed/benchmark.json
             continue
         
         logger.info(f"\nEvaluating baseline: {model_id}")
-        
-        # Model-specific loading
+
         is_jina = "jina" in model_id.lower()
         is_modernbert = "modernbert" in model_id.lower()
         
@@ -111,21 +111,18 @@ def step_evaluate_baselines(benchmark_path: str = "data/processed/benchmark.json
             all_results[model_id] = results
             
             MinSTSBenchmark.print_results(results)
-            
-            # Save individual result
+
             with open(result_path, "w") as f:
                 json.dump(_convert_for_json(results), f, indent=2, ensure_ascii=False)
-            
+
         except Exception as e:
             logger.error(f"Failed to evaluate {model_id}: {e}")
             import traceback
             traceback.print_exc()
-        
-        # Free GPU memory
+
         del model
         torch.cuda.empty_cache()
-    
-    # Save combined results
+
     with open(RESULTS_DIR / "all_baselines.json", "w") as f:
         json.dump(_convert_for_json(all_results), f, indent=2, ensure_ascii=False)
     
@@ -233,15 +230,13 @@ def step_compare():
     if not baselines and not finetuned:
         logger.error("No results to compare!")
         return
-    
-    # Print comparison table
+
     print("\n" + "=" * 80)
     print("MinSTS-Retrieval: Baseline vs. Fine-tuned Comparison")
     print("=" * 80)
-    
+
     metrics = ["Recall@1", "Recall@10", "MRR@10", "nDCG@10"]
-    
-    # Retrieval comparison
+
     for split_key, split_label in [("retrieval_monolingual", "Mono Retrieval"),
                                     ("retrieval_cross_en", "Cross-lingual Retrieval")]:
         print(f"\n{split_label}:")
@@ -249,19 +244,17 @@ def step_compare():
         print("-" * 82)
         
         for model_id in set(list(baselines.keys()) + list(finetuned.keys())):
-            # Baseline
             if model_id in baselines and split_key in baselines[model_id]:
                 b = baselines[model_id][split_key]
-                row = f"baseline/{model_id:<42}"
+                row = f"{'baseline/' + model_id:<50}"
                 for m in metrics:
                     row += f" {b.get(m, 0):.4f}  "
                 print(row)
-            
-            # Fine-tuned
+
             if model_id in finetuned and split_key in finetuned[model_id]:
                 f = finetuned[model_id][split_key]
                 b_val = baselines.get(model_id, {}).get(split_key, {})
-                row = f"finetuned/{model_id:<40}"
+                row = f"{'finetuned/' + model_id:<50}"
                 for m in metrics:
                     val = f.get(m, 0)
                     base = b_val.get(m, 0)
@@ -269,7 +262,6 @@ def step_compare():
                     sign = "+" if delta > 0 else ""
                     row += f" {val:.4f}  "
                 print(row)
-                # Delta row
                 row = f"{'  Δ':<50}"
                 for m in metrics:
                     val = f.get(m, 0)
@@ -279,7 +271,6 @@ def step_compare():
                     row += f" {sign}{delta:.4f}  "
                 print(row)
     
-    # STS comparison
     print(f"\nSTS (Spearman):")
     print(f"{'Model':<50} {'Spearman':>10} {'CI 95%':>20}")
     print("-" * 82)
@@ -289,11 +280,10 @@ def step_compare():
                 s = data[model_id]["sts"]
                 ci = s.get("Spearman_CI95", ["?", "?"])
                 ci_str = f"[{ci[0]:.4f}, {ci[1]:.4f}]" if isinstance(ci[0], (int, float)) else str(ci)
-                print(f"{prefix}/{model_id:<44} {s['Spearman']:>10.4f} {ci_str:>20}")
+                print(f"{prefix + '/' + model_id:<50} {s['Spearman']:>10.4f} {ci_str:>20}")
     
     print("=" * 80 + "\n")
-    
-    # Save comparison
+
     comparison = {"baselines": baselines, "finetuned": finetuned}
     with open(RESULTS_DIR / "comparison.json", "w") as f:
         json.dump(_convert_for_json(comparison), f, indent=2, ensure_ascii=False)
@@ -328,9 +318,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     
     disable_cudnn_sdp()
-    
-    import numpy as np  # needed for _convert_for_json
-    
+
     if args.all or args.prepare_data:
         step_prepare_data()
     
