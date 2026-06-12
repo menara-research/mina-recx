@@ -18,8 +18,6 @@ from sentence_transformers.datasets import NoDuplicatesDataLoader
 
 logger = logging.getLogger(__name__)
 
-# ─── Model-specific config ─────────────────────────────────────────────
-
 MODEL_CONFIGS = {
     "jinaai/jina-embeddings-v5-text-nano-retrieval": {
         "trust_remote_code": True,
@@ -53,10 +51,11 @@ MODEL_CONFIGS = {
 def load_model(model_id: str, output_dir: str) -> SentenceTransformer:
     """Load model with model-specific configuration."""
     cfg = MODEL_CONFIGS.get(model_id, {})
-    trust = cfg.get("trust_remote_code", False)
-    
+    is_jina = "jina" in model_id.lower()
+    trust = is_jina or cfg.get("trust_remote_code", False)
+
     logger.info(f"Loading model: {model_id}")
-    
+
     if cfg.get("is_mlm"):
         from sentence_transformers import models
         transformer = models.Transformer(model_id, trust_remote_code=trust)
@@ -65,6 +64,12 @@ def load_model(model_id: str, output_dir: str) -> SentenceTransformer:
             pooling_mode="mean",
         )
         model = SentenceTransformer(modules=[transformer, pooling])
+    elif is_jina:
+        model = SentenceTransformer(
+            model_id,
+            trust_remote_code=True,
+            model_kwargs={"dtype": torch.bfloat16},
+        )
     else:
         model = SentenceTransformer(model_id, trust_remote_code=trust)
     
@@ -112,25 +117,17 @@ def train(
     
     torch.manual_seed(seed)
     torch.backends.cuda.enable_cudnn_sdp(False)
-    
-    # Setup output
+
     output_path = Path(output_dir) / model_id.replace("/", "_")
     output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Load model
+
     model = load_model(model_id, str(output_path))
-    
-    # Build training data
     examples = build_input_examples(data_path, model_id)
-    
-    # DataLoader
     train_dataloader = NoDuplicatesDataLoader(examples, batch_size=batch_size)
-    
-    # Loss: MultipleNegativesRankingLoss (InfoNCE)
+
     scale = 1.0 / temperature
     train_loss = losses.MultipleNegativesRankingLoss(model=model, scale=scale)
-    
-    # Warmup steps
+
     warmup_steps = math.ceil(len(train_dataloader) * epochs * warmup_ratio)
     
     logger.info(f"Training: {model_id}")
@@ -150,7 +147,6 @@ def train(
         checkpoint_save_steps=len(train_dataloader),
     )
     
-    # Save final
     model.save(str(output_path))
     logger.info(f"Model saved to {output_path}")
     
