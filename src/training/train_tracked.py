@@ -50,20 +50,6 @@ def build_input_examples(data_path: str, model_id: str = "") -> list:
     return examples
 
 
-class LossTracker:
-    """Capture per-step loss values from the trainer callback."""
-    def __init__(self):
-        self.step_losses = []
-        self.step_nums = []
-        self.epoch_losses = []
-        self.epoch_nums = []
-    
-    def __call__(self, score, epoch, steps):
-        """Called by sentence-transformers evaluator callback."""
-        self.step_losses.append(score)
-        self.step_nums.append(steps)
-
-
 def train_with_tracking(
     model_id: str = "jinaai/jina-embeddings-v5-text-nano-retrieval",
     data_path: str = "data/processed/training_with_negatives.json",
@@ -90,23 +76,9 @@ def train_with_tracking(
     train_loss = losses.MultipleNegativesRankingLoss(model=model, scale=scale)
     
     warmup_steps = math.ceil(len(train_dataloader) * epochs * 0.1)
-    
-    # Track loss by hooking into the trainer
-    loss_history = []
-    
-    # Custom evaluator that just records loss
-    class LossRecorder:
-        def __init__(self):
-            self.steps = []
-            self.losses = []
-            self._current_step = 0
-        
-        def __call__(self, model, output_path=None, epoch=-1, steps=-1, **kwargs):
-            return None  # no-op evaluator
-    
-    # We need to capture loss from the training loop.
-    # sentence-transformers uses HuggingFace Trainer internally.
-    # We'll patch the loss function to record values.
+
+    # Patch the loss forward to record per-step loss; the HF Trainer used
+    # internally by sentence-transformers exposes no per-step loss hook.
     original_forward = train_loss.forward
     
     step_data = {"steps": [], "losses": []}
@@ -132,10 +104,8 @@ def train_with_tracking(
         use_amp=False,
     )
     
-    # Restore
     train_loss.forward = original_forward
-    
-    # Save loss history
+
     loss_out = {
         "run_name": run_name,
         "config": {
@@ -153,11 +123,13 @@ def train_with_tracking(
     with open(output_path / "loss_history.json", "w") as f:
         json.dump(loss_out, f)
     
-    # Also need to copy modeling_eurobert.py for later loading
+    # Copy the model's custom modeling file from the HF modules cache so the
+    # saved checkpoint reloads later. Path varies by machine/commit, so glob it.
     import shutil
-    src = Path("/root/.cache/huggingface/modules/transformers_modules/jinaai/jina_hyphen_embeddings_hyphen_v5_hyphen_text_hyphen_nano_hyphen_retrieval/ac5d898c8d382b17167c33e5c8af644a3519b47d/modeling_eurobert.py")
+    modules_root = Path.home() / ".cache/huggingface/modules/transformers_modules"
+    src = next(modules_root.glob("**/modeling_eurobert.py"), None)
     dst = output_path / "modeling_eurobert.py"
-    if src.exists() and not dst.exists():
+    if src and not dst.exists():
         shutil.copy2(src, dst)
     
     logger.info(f"[{run_name}] Final loss: {step_data['losses'][-1]:.4f}, Steps: {len(step_data['losses'])}")
