@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MinSTS-Retrieval: First retrieval/STS benchmark for Minangkabau.
+MinSTS-Retrieval: retrieval/STS benchmark for Minangkabau.
 
 Handles different model APIs:
 - Jina v5: model.encode(texts=..., task=..., prompt_name=...) with task-specific prompts
@@ -23,8 +23,6 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-# ─── Model-specific encode helpers ───────────────────────────────────
-
 def encode_with_model(model, texts: list[str], batch_size: int = 128, 
                       task: str = "retrieval", role: str = "document",
                       model_id: str = "") -> np.ndarray:
@@ -37,12 +35,10 @@ def encode_with_model(model, texts: list[str], batch_size: int = 128,
     - LazarusNLP: plain encode()
     - ModernBERT (raw): mean-pooling over last hidden state
     """
-    # Detect model family
     is_jina = "jina" in model_id.lower()
     is_e5 = "e5" in model_id.lower() and "jina" not in model_id.lower()
-    
+
     if is_jina:
-        # Jina v5: task-aware encoding
         prompt_name = "query" if role == "query" else "document"
         return model.encode(
             sentences=texts,
@@ -53,7 +49,6 @@ def encode_with_model(model, texts: list[str], batch_size: int = 128,
             prompt_name=prompt_name,
         )
     elif is_e5:
-        # multilingual-e5: prefix convention
         prefix = "query: " if role == "query" else "passage: "
         prefixed = [prefix + t for t in texts]
         return model.encode(
@@ -63,7 +58,6 @@ def encode_with_model(model, texts: list[str], batch_size: int = 128,
             normalize_embeddings=True,
         )
     else:
-        # Standard sentence-transformers encode (LazarusNLP, NusaBERT, etc.)
         return model.encode(
             sentences=texts,
             batch_size=batch_size,
@@ -96,8 +90,6 @@ def encode_sts_with_model(model, texts1: list[str], texts2: list[str],
     return emb1, emb2
 
 
-# ─── Benchmark class ──────────────────────────────────────────────────
-
 class MinSTSBenchmark:
     """MinSTS-Retrieval benchmark for Minangkabau."""
     
@@ -117,11 +109,9 @@ class MinSTSBenchmark:
         
         corpus = self.data["retrieval"]["corpus"]
         
-        # Encode corpus as documents
-        corpus_emb = encode_with_model(model, corpus, batch_size, 
+        corpus_emb = encode_with_model(model, corpus, batch_size,
                                        task="retrieval", role="document", model_id=model_id)
-        
-        # Encode queries
+
         query_texts = [q["query"] for q in queries]
         query_emb = encode_with_model(model, query_texts, batch_size,
                                       task="retrieval", role="query", model_id=model_id)
@@ -189,7 +179,6 @@ class MinSTSBenchmark:
                 sp, pv = spearmanr(d["pred"], d["gold"])
                 type_corr[t] = {"spearman": sp, "pvalue": pv, "n": len(d["pred"])}
         
-        # Bootstrap CI
         rng = np.random.default_rng(42)
         boot = [spearmanr(pred[rng.choice(len(pred), len(pred), replace=True)],
                           gold[rng.choice(len(gold), len(gold), replace=True)])[0]
@@ -369,7 +358,6 @@ def main():
     
     logger.info(f"Loading model: {args.model}")
     
-    # Model-specific loading
     is_jina = "jina" in args.model.lower()
     
     if is_jina:
