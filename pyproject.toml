@@ -15,7 +15,6 @@ dependencies = [
     "accelerate>=1.13.0",
     "datasets>=4.8.5",
     "faiss-cpu>=1.14.2",
-    "flash-attn-4>=4.0.0b4",
     "matplotlib>=3.10.9",
     "numpy>=2.4.6",
     "pandas>=3.0.3",
@@ -28,4 +27,10 @@ dependencies = [
     "tqdm>=4.67.3",
     "transformers>=5.9.0",
     "wandb>=0.27.0",
+]
+
+# flash-attn requires CUDA; keep it out of the default deps so `uv sync` works off-GPU.
+[project.optional-dependencies]
+gpu = [
+    "flash-attn-4>=4.0.0b4",
 ]
