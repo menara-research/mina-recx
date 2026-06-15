@@ -2,6 +2,7 @@
 """Evaluate all ablation models + baseline on MinSTS benchmark."""
 
 import json
+import os
 import torch
 from sentence_transformers import SentenceTransformer
 from src.benchmark.evaluate import MinSTSBenchmark, _convert_for_json
@@ -26,6 +27,10 @@ all_results = {}
 
 for name, path in models_to_eval:
     print(f"\nEvaluating: {name} ({path})")
+    if path.startswith("models/") and not os.path.isdir(path):
+        print(f"  SKIP: {path} not found. Train this ablation first "
+              f"(see README) or remove it from models_to_eval.")
+        continue
     try:
         model = SentenceTransformer(path, trust_remote_code=True)
         model.max_seq_length = 512
