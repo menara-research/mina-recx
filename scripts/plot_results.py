@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-High-quality publication plots for MinSTS-Retrieval paper.
-Plot 1: Performance comparison (radar-style grouped bars, focused metrics)
-Plot 2: Training loss curves (epoch and temperature ablations)
-"""
+"""Plots for the MinSTS-Retrieval paper: comparison, ablations, loss, heatmap."""
 
 import json
 import numpy as np
@@ -12,7 +8,6 @@ import matplotlib
 matplotlib.use('Agg')
 from pathlib import Path
 
-# ─── Style ──────────────────────────────────────────────────────────────
 plt.rcParams.update({
     'font.family': 'serif',
     'font.serif': ['Times New Roman', 'DejaVu Serif'],
@@ -54,12 +49,7 @@ def extract_metrics(d):
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Figure 1: Performance Comparison — two-panel
-# (a) High-range metrics (bitext, STS, code-switch)
-# (b) Low-range metrics (retrieval, zoomed in)
-# ═══════════════════════════════════════════════════════════════════════
-
+# Figure 1: Performance comparison. (a) cross-lingual + code-switch, (b) retrieval.
 def plot_performance_comparison():
     # Load baseline model results
     models = [
@@ -83,9 +73,8 @@ def plot_performance_comparison():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), 
                                      gridspec_kw={'width_ratios': [3, 1.2]})
     
-    # ─── Panel (a): High-range metrics ───
+    # Panel (a): High-range metrics
     metrics_a = [
-        ('sts', 'STS ρ'),
         ('en_acc', 'Bitext\n(min→en)'),
         ('id_acc', 'Bitext\n(min→id)'),
         ('cs_cos', 'Code-switch\nCosine'),
@@ -113,12 +102,12 @@ def plot_performance_comparison():
     ax1.set_ylabel('Score')
     ax1.set_ylim(0, 1.08)
     ax1.legend(loc='lower right', ncol=2, fontsize=8.5, handlelength=1.5)
-    ax1.set_title('(a) Semantic Similarity & Cross-lingual Transfer', fontweight='bold')
+    ax1.set_title('(a) Cross-lingual Transfer & Code-switch', fontweight='bold')
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
     ax1.grid(axis='y', alpha=0.25, linewidth=0.5)
     
-    # ─── Panel (b): Retrieval metrics (zoomed) ───
+    # Panel (b): Retrieval metrics (zoomed)
     metrics_b = [
         ('mono_r10', 'Mono.\nR@10'),
         ('mono_mrr', 'Mono.\nMRR@10'),
@@ -157,10 +146,7 @@ def plot_performance_comparison():
     plt.close(fig)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Figure 2: Ablation Study — 2×2 grid
-# ═══════════════════════════════════════════════════════════════════════
-
+# Figure 2: Ablation study, 2x2 grid (epochs/temperature x similarity/retrieval).
 def plot_ablation_results():
     epoch_runs = {}
     for e in [3, 5, 7, 10]:
@@ -175,7 +161,7 @@ def plot_ablation_results():
     
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
     
-    # ─── (a) Epoch ablation: STS + Cross-lingual ───
+    # (a) Epoch ablation: STS + Cross-lingual
     ax = axes[0, 0]
     epochs = sorted(epoch_runs.keys())
     
@@ -207,7 +193,7 @@ def plot_ablation_results():
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
-    # ─── (b) Epoch ablation: Retrieval + Code-switching ───
+    # (b) Epoch ablation: Retrieval + Code-switching
     ax = axes[0, 1]
     
     ax.plot(epochs, [epoch_runs[e]['mono_r10'] for e in epochs],
@@ -237,7 +223,7 @@ def plot_ablation_results():
     ax.grid(alpha=0.2, lw=0.5)
     ax.spines['top'].set_visible(False)
     
-    # ─── (c) Temperature ablation: STS + Cross-lingual ───
+    # (c) Temperature ablation: STS + Cross-lingual
     ax = axes[1, 0]
     temps = sorted(temp_runs.keys())
     
@@ -268,7 +254,7 @@ def plot_ablation_results():
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
-    # ─── (d) Temperature ablation: Retrieval + Code-switching ───
+    # (d) Temperature ablation: Retrieval + Code-switching
     ax = axes[1, 1]
     
     ax.plot(temps, [temp_runs[t]['mono_r10'] for t in temps],
@@ -309,19 +295,30 @@ def plot_ablation_results():
     plt.close(fig)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Figure 3: Training Loss Curves
-# ═══════════════════════════════════════════════════════════════════════
-
+# Figure 3: Training loss curves (epoch and temperature ablations).
 def plot_training_loss():
+    try:
+        epoch_histories = {
+            e: load_json(f'models/ablations/epochs_{e}/loss_history.json')
+            for e in [3, 5, 7, 10]
+        }
+        temp_histories = {
+            t: load_json(f'models/ablations/temp_{t}/loss_history.json')
+            for t in ['0.02', '0.1', '0.2']
+        }
+    except FileNotFoundError as e:
+        print(f"Skipping training_loss figure: {e.filename} not found "
+              f"(models/ablations/ checkpoints are not in this checkout).")
+        return
+
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
-    
-    # ─── (a) Loss by epoch count ───
+
+    # (a) Loss by epoch count
     ax = axes[0]
     epoch_colors = {3: '#0072B2', 5: '#009E73', 7: '#E69F00', 10: '#D55E00'}
-    
+
     for epochs in [3, 5, 7, 10]:
-        lh = load_json(f'models/ablations/epochs_{epochs}/loss_history.json')
+        lh = epoch_histories[epochs]
         steps = np.array(lh['step_losses']['steps'])
         losses = np.array(lh['step_losses']['losses'])
         
@@ -344,7 +341,7 @@ def plot_training_loss():
                           ls=':', alpha=0.15, lw=0.8)
     
     # Also plot raw for 10-epoch (faint)
-    lh10 = load_json('models/ablations/epochs_10/loss_history.json')
+    lh10 = epoch_histories[10]
     steps10 = np.array(lh10['step_losses']['steps'])
     losses10 = np.array(lh10['step_losses']['losses'])
     ax.plot(steps10, losses10, lw=0.4, color='#D55E00', alpha=0.3, label='_raw')
@@ -358,7 +355,7 @@ def plot_training_loss():
     ax.spines['right'].set_visible(False)
     ax.set_ylim(0, max(losses10) * 1.05)
     
-    # ─── (b) Loss by temperature ───
+    # (b) Loss by temperature
     ax = axes[1]
     temp_data = [
         ('0.02', '#0072B2', 'τ=0.02'),
@@ -369,9 +366,9 @@ def plot_training_loss():
     
     for temp_str, color, label in temp_data:
         if temp_str == '0.05':
-            lh = load_json('models/ablations/epochs_5/loss_history.json')
+            lh = epoch_histories[5]
         else:
-            lh = load_json(f'models/ablations/temp_{temp_str}/loss_history.json')
+            lh = temp_histories[temp_str]
         steps = np.array(lh['step_losses']['steps'])
         losses = np.array(lh['step_losses']['losses'])
         
@@ -404,13 +401,9 @@ def plot_training_loss():
     plt.close(fig)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# Figure 4: Summary heatmap — all models × all metrics
-# ═══════════════════════════════════════════════════════════════════════
-
+# Figure 4: Summary heatmap, all models x metrics.
 def plot_summary_heatmap():
-    """Heatmap comparing all models across all metrics."""
-    
+
     models_order = [
         ('mE5-small', 'baseline_intfloat_multilingual-e5-small.json'),
         ('Indo-e5-small', 'baseline_LazarusNLP_all-indo-e5-small-v4.json'),
@@ -423,7 +416,6 @@ def plot_summary_heatmap():
     metrics_order = [
         ('mono_r10', 'Mono. R@10'),
         ('cross_r10', 'Cross R@10'),
-        ('sts', 'STS ρ'),
         ('en_acc', 'Bitext (en)'),
         ('id_acc', 'Bitext (id)'),
         ('cs_cos', 'Code-switch'),
@@ -468,8 +460,6 @@ def plot_summary_heatmap():
     print("Saved: figures/performance_heatmap.png/pdf")
     plt.close(fig)
 
-
-# ═══════════════════════════════════════════════════════════════════════
 
 Path('figures').mkdir(exist_ok=True)
 
