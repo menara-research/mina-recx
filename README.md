@@ -1,26 +1,107 @@
 # Minang Embedder
 
-Fine-tuned sentence embeddings for Minangkabau semantic search and cross-lingual retrieval.
+Minang Embedder is a Minangkabau sentence-embedding model and benchmark repo for semantic search, cross-lingual retrieval, and code-switch evaluation.
 
-This repository contains the local MinSTS-Retrieval benchmark data, training code, benchmark outputs, and figures.
+It fine-tunes `jinaai/jina-embeddings-v5-text-nano-retrieval` on NusaX-derived Minangkabau, Indonesian, and English pairs, then evaluates the result on a local constructed benchmark: MinSTS-Retrieval.
 
-The final exported model artifact is available locally but intentionally excluded from GitHub:
+It is not a hosted service, generic model zoo, or manually human-annotated STS benchmark.
 
-`/root/ling-proj/models/minang-embedder/jinaai_jina-embeddings-v5-text-nano-retrieval`
+Model weights:
 
-## Artifacts
+https://huggingface.co/apsys/minang-embedder
 
-| Path | Contents |
-| --- | --- |
-| `data/processed/benchmark.json` | MinSTS-Retrieval benchmark with monolingual retrieval, English-to-Minangkabau retrieval, STS, cross-lingual, and code-switching tasks. |
-| `data/processed/training_pairs.json` | Generated positive, weak-positive, and negative training pairs. |
-| `data/processed/training_with_negatives.json` | Contrastive training examples with BM25 hard negatives. |
-| `data/processed/train_dataset_hf/` | Hugging Face dataset export used by training. |
-| `results/` | Baseline, finetuned, and ablation benchmark JSON outputs. |
-| `figures/` | Publication-style benchmark, ablation, heatmap, and training-loss plots as PNG and PDF. |
-| `/root/ling-proj/models/minang-embedder/` | Local-only final exported SentenceTransformers model. The `models/` tree is ignored for GitHub. |
+Code, benchmark artifacts, result JSONs, and figures live in this repo.
 
-## Final Model Metrics
+## Quickstart
+
+Install and embed text with the public Hugging Face model:
+
+```bash
+pip install -U sentence-transformers
+```
+
+```python
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("apsys/minang-embedder", trust_remote_code=True)
+
+queries = ["Paliang suko bana makan siang di siko ayam jo ladonyo lamak bana."]
+docs = [
+    "I love having lunch here because the chicken and sambal are delicious.",
+    "The train ticket was booked yesterday.",
+    "Kurang pas kalau bakunjuang ka banduang tanpa mancicipi batagor.",
+]
+
+q = model.encode_query(queries, normalize_embeddings=True)
+d = model.encode_document(docs, normalize_embeddings=True)
+print(model.similarity(q, d))
+```
+
+Expected result: the English lunch/sambal translation should rank above unrelated text.
+
+## Smallest Real Example
+
+Inspect the committed benchmark result:
+
+```bash
+jq '.sts.Spearman, .cross_lingual.min_en["Accuracy@1"], .codeswitch.avg_cosine_similarity' \
+  results/finetuned_minang-embedder.json
+```
+
+Expected output:
+
+```txt
+0.7974851829791335
+0.7825
+0.6736049652099609
+```
+
+## Reproduce
+
+The repo uses `uv`.
+
+CPU steps need only default dependencies:
+
+```bash
+uv sync
+uv run python src/data/prepare_data.py
+uv run python scripts/plot_results.py
+```
+
+GPU steps need the `gpu` extra for `flash-attn`:
+
+```bash
+uv sync --extra gpu
+uv run python src/training/train.py
+```
+
+Run ablations before evaluating `models/ablations/`:
+
+```bash
+uv run python src/training/train_tracked.py --run-name epochs_3 --epochs 3
+uv run python src/training/train_tracked.py --run-name epochs_5 --epochs 5
+uv run python src/training/train_tracked.py --run-name epochs_7 --epochs 7
+uv run python src/training/train_tracked.py --run-name epochs_10 --epochs 10
+uv run python src/training/train_tracked.py --run-name temp_0.02 --temperature 0.02
+uv run python src/training/train_tracked.py --run-name temp_0.1 --temperature 0.1
+uv run python src/training/train_tracked.py --run-name temp_0.2 --temperature 0.2
+uv run python scripts/eval_ablations.py
+uv run python scripts/plot_results.py
+```
+
+The local final model export is intentionally ignored by Git:
+
+```txt
+/root/ling-proj/models/minang-embedder/jinaai_jina-embeddings-v5-text-nano-retrieval/
+```
+
+Use the public HF model for normal loading:
+
+```txt
+apsys/minang-embedder
+```
+
+## Results
 
 Source: `results/finetuned_minang-embedder.json`
 
@@ -34,63 +115,191 @@ Source: `results/finetuned_minang-embedder.json`
 | Cross-En Recall@10 | 0.0455 |
 | Code-switch cosine | 0.6736 |
 
-## Ablation Summary
-
-Source: `results/all_ablation_results.json`
+Best ablation summary from `results/all_ablation_results.json`:
 
 | Model | STS Spearman | Min-En Acc@1 | Min-ID Acc@1 | Mono R@10 | Mono MRR@10 | Cross-En R@10 | Code-switch Cosine |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | baseline | 0.4943 | 0.7025 | 0.9300 | 0.0400 | 0.0809 | 0.0510 | 0.7255 |
-| epochs_3 | 0.7788 | 0.8650 | 0.9800 | 0.0340 | 0.0724 | 0.0385 | 0.7666 |
-| epochs_5 | 0.7896 | 0.8400 | 0.9625 | 0.0360 | 0.0743 | 0.0400 | 0.7367 |
-| epochs_7 | 0.7941 | 0.8075 | 0.9400 | 0.0380 | 0.0789 | 0.0485 | 0.7018 |
-| epochs_10 | 0.7952 | 0.7775 | 0.9125 | 0.0400 | 0.0807 | 0.0420 | 0.6797 |
-| temp_0.02 | 0.7760 | 0.7400 | 0.9275 | 0.0370 | 0.0682 | 0.0413 | 0.8201 |
-| temp_0.1 | 0.7990 | 0.8750 | 0.9650 | 0.0395 | 0.0836 | 0.0393 | 0.7835 |
 | temp_0.2 | 0.7992 | 0.8700 | 0.9450 | 0.0500 | 0.0902 | 0.0450 | 0.8618 |
+| final export | 0.7975 | 0.7825 | 0.9075 | 0.0410 | 0.0760 | 0.0455 | 0.6736 |
 
-## Figures
+Full baselines and ablations are in `results/`.
 
-| Figure | File |
+## Comparison
+
+Minang Embedder is designed for a narrow low-resource retrieval wedge: Minangkabau text, Minangkabau-English alignment, Minangkabau-Indonesian alignment, and code-switch robustness.
+
+| Model or artifact | Best for | Tradeoff |
+| --- | --- | --- |
+| `apsys/minang-embedder` | Minangkabau semantic search and local NusaX-derived evaluation | Small domain-specific fine-tune; not a broad multilingual leaderboard model |
+| `jinaai/jina-embeddings-v5-text-nano-retrieval` | Compact multilingual retrieval baseline | Strong general base, but not specialized for the constructed Minangkabau benchmark |
+| `intfloat/multilingual-e5-small` | General multilingual retrieval with a common prefix convention | Broader model; less targeted to this Minangkabau data path |
+| `LazarusNLP/all-indo-e5-small-v4` | Indonesian-focused embeddings | Indonesian strength does not automatically cover Minangkabau transfer |
+| `LazarusNLP/all-NusaBERT-base-v4` | Nusa-language representation baseline | Raw representation baseline; not optimized here as a retrieval SentenceTransformer |
+
+Use this repo for:
+
+- inspecting a concrete Minangkabau embedding fine-tune
+- reproducing NusaX-derived training/eval artifacts
+- comparing baselines on the same local benchmark JSON
+- adapting the benchmark construction code for another Indonesian local language
+
+Do not use it as:
+
+- a claim of state-of-the-art Minangkabau STS
+- a production relevance benchmark
+- a hosted embedding API
+- a general multilingual embedding replacement
+
+## Benchmark
+
+MinSTS-Retrieval is generated in `src/data/prepare_data.py` from:
+
+- `mteb/NusaXBitextMining`: `eng-min`, `eng-ind`
+- `mteb/nusa_x_senti`: `min`, `ind`, `eng`
+
+Benchmark artifact:
+
+```txt
+data/processed/benchmark.json
+```
+
+| Section | Construction | Count |
+| --- | --- | ---: |
+| Monolingual retrieval | Minangkabau sentiment test text retrieves same-label Minangkabau texts | 400 queries, 400 docs |
+| Cross EN to MIN retrieval | English sentiment test text retrieves same-label Minangkabau texts | 400 queries |
+| STS | Translation, same-sentiment, and different-sentiment pairs with heuristic scores | 731 pairs |
+| Cross-lingual bitext | Shared NusaX IDs for Minangkabau-English and Minangkabau-Indonesian | 400 each |
+| Code-switching | Synthetic Minangkabau/Indonesian mixed text paired with original Minangkabau or English | 100 examples |
+
+Metrics are computed in `src/benchmark/evaluate.py`:
+
+| Task | Metrics |
 | --- | --- |
-| Model comparison | `figures/performance_comparison.png`, `figures/performance_comparison.pdf` |
-| Performance heatmap | `figures/performance_heatmap.png`, `figures/performance_heatmap.pdf` |
-| Ablation study | `figures/ablation_study.png`, `figures/ablation_study.pdf` |
-| Training loss | `figures/training_loss.png`, `figures/training_loss.pdf` |
+| Retrieval | Recall@1, Recall@10, MRR@10, nDCG@10 |
+| STS | Spearman correlation |
+| Cross-lingual bitext | Accuracy@1, MRR, Recall@5, Recall@10 |
+| Code-switching | average cosine similarity, Spearman |
 
-## Run Locally
-
-CPU steps (data prep and plotting) need only the default deps:
+Reproduce benchmark artifacts:
 
 ```bash
-uv sync
 uv run python src/data/prepare_data.py
-```
-
-GPU steps (training and evaluation) need the `gpu` extra for flash-attn:
-
-```bash
-uv sync --extra gpu
-uv run python src/training/train.py
-```
-
-`scripts/eval_ablations.py` evaluates the ablation models under `models/ablations/`. Those models do not exist until you train them, one run per config, with `src/training/train_tracked.py`:
-
-```bash
-uv run python src/training/train_tracked.py --run-name epochs_3 --epochs 3
-uv run python src/training/train_tracked.py --run-name epochs_5 --epochs 5
-uv run python src/training/train_tracked.py --run-name epochs_7 --epochs 7
-uv run python src/training/train_tracked.py --run-name epochs_10 --epochs 10
-uv run python src/training/train_tracked.py --run-name temp_0.02 --temperature 0.02
-uv run python src/training/train_tracked.py --run-name temp_0.1 --temperature 0.1
-uv run python src/training/train_tracked.py --run-name temp_0.2 --temperature 0.2
 uv run python scripts/eval_ablations.py
 ```
 
-Plotting runs on CPU once results exist:
+## Mental Model
 
-```bash
-uv run python scripts/plot_results.py
+The repo has three layers:
+
+```txt
+data/processed/      committed benchmark and training artifacts
+src/                 data preparation, training, and benchmark code
+results/ + figures/  visible proof: JSON metrics and rendered plots
 ```
 
-Model weights, intermediate checkpoints, optimizer state, and local caches are excluded by `.gitignore`. Keep `/root/ling-proj/models/` as the local model artifact directory.
+Pipeline:
+
+```txt
+NusaX bitext + NusaX sentiment
+  -> generated training pairs
+  -> BM25 hard negatives
+  -> SentenceTransformers fine-tune
+  -> MinSTS-Retrieval benchmark
+  -> result JSONs
+  -> plots
+```
+
+## Supported Paths
+
+| Path | Status |
+| --- | --- |
+| Load public model from HF | supported |
+| Recreate local benchmark JSON | supported |
+| Re-run baseline and ablation evaluation | supported |
+| Re-plot figures from committed results | supported |
+| Train the local model path from scratch | supported with local GPU/runtime assumptions |
+| Upload checkpoints to GitHub | not supported; model files are intentionally ignored |
+| Treat MinSTS-Retrieval as human STS gold data | not supported |
+
+## Repo Layout
+
+```txt
+.
+  README.md
+  ARTIFACTS.md
+  pyproject.toml
+  uv.lock
+
+  configs/
+    datasets.yaml
+
+  data/processed/
+    benchmark.json
+    training_pairs.json
+    training_with_negatives.json
+    train_dataset_hf/
+
+  src/
+    data/prepare_data.py
+    training/train.py
+    training/train_tracked.py
+    benchmark/evaluate.py
+    run_pipeline.py
+
+  scripts/
+    eval_ablations.py
+    plot_results.py
+
+  results/
+    *.json
+
+  figures/
+    *.png
+    *.pdf
+```
+
+## Docs
+
+Start here:
+
+- Model card: https://huggingface.co/apsys/minang-embedder
+- Artifact inventory: `ARTIFACTS.md`
+- Benchmark construction: `src/data/prepare_data.py`
+- Evaluation metrics: `src/benchmark/evaluate.py`
+- Plot generation: `scripts/plot_results.py`
+
+## License And Attribution
+
+The public model is released as `cc-by-nc-sa-4.0` because it derives from:
+
+- `jinaai/jina-embeddings-v5-text-nano-retrieval`, listed as `cc-by-nc-4.0`
+- NusaX-derived datasets, listed as `cc-by-sa-4.0`
+
+Data sources:
+
+- https://huggingface.co/datasets/mteb/NusaXBitextMining
+- https://huggingface.co/datasets/mteb/nusa_x_senti
+- https://huggingface.co/datasets/indonlp/NusaX-senti
+
+Primary NusaX reference:
+
+```bibtex
+@misc{winata2022nusax,
+  title={NusaX: Multilingual Parallel Sentiment Dataset for 10 Indonesian Local Languages},
+  author={Winata, Genta Indra and Aji, Alham Fikri and Cahyawijaya, Samuel and Mahendra, Rahmad and Koto, Fajri and Romadhony, Ade and Kurniawan, Kemal and Moeljadi, David and Prasojo, Radityo Eko and Fung, Pascale and Baldwin, Timothy and Lau, Jey Han and Sennrich, Rico and Ruder, Sebastian},
+  year={2022},
+  eprint={2205.15960},
+  archivePrefix={arXiv},
+  primaryClass={cs.CL}
+}
+```
+
+## Limitations
+
+- The benchmark is constructed from NusaX labels and alignments, not manually annotated Minangkabau STS.
+- Retrieval relevance is approximated through sentiment labels, not human search judgments.
+- STS scores are heuristic: translation is high similarity, same sentiment is medium/high, different sentiment is low.
+- The model inherits constraints from the Jina base model and NusaX-derived data.
+- The GitHub repo excludes model weights and checkpoints; use `apsys/minang-embedder` on Hugging Face for weights.
+- Production retrieval quality should be validated on domain-specific Minangkabau queries and documents.
