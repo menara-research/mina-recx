@@ -60,11 +60,36 @@ Source: `results/all_ablation_results.json`
 
 ## Run Locally
 
+CPU steps (data prep and plotting) need only the default deps:
+
 ```bash
 uv sync
 uv run python src/data/prepare_data.py
+```
+
+GPU steps (training and evaluation) need the `gpu` extra for flash-attn:
+
+```bash
+uv sync --extra gpu
 uv run python src/training/train.py
+```
+
+`scripts/eval_ablations.py` evaluates the ablation models under `models/ablations/`. Those models do not exist until you train them, one run per config, with `src/training/train_tracked.py`:
+
+```bash
+uv run python src/training/train_tracked.py --run-name epochs_3 --epochs 3
+uv run python src/training/train_tracked.py --run-name epochs_5 --epochs 5
+uv run python src/training/train_tracked.py --run-name epochs_7 --epochs 7
+uv run python src/training/train_tracked.py --run-name epochs_10 --epochs 10
+uv run python src/training/train_tracked.py --run-name temp_0.02 --temperature 0.02
+uv run python src/training/train_tracked.py --run-name temp_0.1 --temperature 0.1
+uv run python src/training/train_tracked.py --run-name temp_0.2 --temperature 0.2
 uv run python scripts/eval_ablations.py
+```
+
+Plotting runs on CPU once results exist:
+
+```bash
 uv run python scripts/plot_results.py
 ```
 
